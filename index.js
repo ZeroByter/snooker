@@ -28,9 +28,6 @@ const FRICTION_CONSTANT = 0.985;
 export const ballRadius = 3;
 const holeRadius = ballRadius * 1.5;
 
-let ballCollisionQuery = null;
-let ballCollisionResults = null;
-
 let isMouseDown = false;
 let mouseLocation = new vector2();
 
@@ -103,13 +100,6 @@ for (let y = 0; y < 5; y++) {
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 
-const queryBallCollision = (initialLocation, initialVelocity) => {
-  ballCollisionQuery = {
-    initialLocation,
-    initialVelocity,
-  };
-};
-
 const addHole = (x, y) => {
   holes.push({
     location: new vector2(x, y),
@@ -154,27 +144,45 @@ const screenToTableLocation = (x, y) => {
   return new vector2(tableX, tableY);
 };
 
+const areAllBallsStopped = () => {
+  let totalBallsSpeed = 0;
+  for (const ball of balls) {
+    totalBallsSpeed += ball.velocity.magnitude()
+  }
+
+  return totalBallsSpeed < 0.01
+}
+
 canvas.addEventListener("mouseup", (e) => {
+  isMouseDown = false;
+  DEBUG_DRAW_LINES = [];
+
+  if (!areAllBallsStopped()) {
+    return;
+  }
+
   const tableLocation = screenToTableLocation(e.clientX, e.clientY);
 
   const dir = tableLocation.minus(playerBall.location).multiply(0.035);
 
   playerBall.velocity = dir;
-
-  isMouseDown = false;
 });
 
 canvas.addEventListener("mousedown", (e) => {
   isMouseDown = true;
 
-  for (const ball of balls) {
-    ball.velocity = new vector2();
-  }
+  // for (const ball of balls) {
+  //   ball.velocity = new vector2();
+  // }
 });
 
 canvas.addEventListener("mousemove", (e) => {
   if (isMouseDown) {
     DEBUG_DRAW_LINES = [];
+
+    if (!areAllBallsStopped()) {
+      return;
+    }
 
     const tableLocation = screenToTableLocation(e.clientX, e.clientY);
 
@@ -266,15 +274,7 @@ canvas.addEventListener("mousemove", (e) => {
   }
 });
 
-const caluclateSimulatedBallCollision = () => {
-  ballCollisionQuery = null;
-};
-
 const think = () => {
-  if (ballCollisionQuery) {
-    caluclateSimulatedBallCollision();
-  }
-
   for (const ball of balls) {
     ball.location = ball.location.add(ball.velocity);
 
@@ -339,7 +339,7 @@ const render = () => {
   ctx.fillStyle = "rgb(15,15,15)";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  const tablePadding = 5;
+  const tablePadding = 10;
   ctx.fillStyle = "#007030";
   ctx.fillRect(
     canvas.width / 2 - ((tableSize + tablePadding) / 2) * zoom,
