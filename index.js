@@ -84,22 +84,22 @@ const addBall = (x, y, isPlayer, isStripped) => {
   return newBall;
 };
 
-for (let y = 0; y < 5; y++) {
-  for (let x = 0; x < 6 - (y + 1); x++) {
-    addBall(
-      tableSize / 2 +
-        (y - 4) * ((ballRadius * 2.25) / 2) +
-        x * ballRadius * 2.25,
-      tableSize * 0.33 + y * ballRadius * 2,
-      false,
-      balls.length < 7
-    );
-  }
-}
-
-// for (let i = 0; i < 4; i++) {
-//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+// for (let y = 0; y < 5; y++) {
+//   for (let x = 0; x < 6 - (y + 1); x++) {
+//     addBall(
+//       tableSize / 2 +
+//         (y - 4) * ((ballRadius * 2.25) / 2) +
+//         x * ballRadius * 2.25,
+//       tableSize * 0.33 + y * ballRadius * 2,
+//       false,
+//       balls.length < 7
+//     );
+//   }
 // }
+
+for (let i = 0; i < 4; i++) {
+  addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+}
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 
@@ -216,6 +216,10 @@ canvas.addEventListener("mousemove", (e) => {
       }
     }
 
+    const calculateFinalVelocity = (v1, f, d) => {
+      return v1 * f ** d;
+    };
+
     if (closestBallHit) {
       const rayDistance = rayDistanceToCircle(
         playerBall.location,
@@ -234,6 +238,27 @@ canvas.addEventListener("mousemove", (e) => {
       //   FRICTION_CONSTANT ** rayDistance
       // );
 
+      const before = simulatedVelocity.clone();
+
+      simulatedVelocity.x = calculateFinalVelocity(
+        simulatedVelocity.x,
+        FRICTION_CONSTANT,
+        rayDistance
+      );
+      simulatedVelocity.y = calculateFinalVelocity(
+        simulatedVelocity.y,
+        FRICTION_CONSTANT,
+        rayDistance
+      );
+
+      console.log(
+        before.x,
+        before.y,
+        simulatedVelocity.x,
+        simulatedVelocity.y,
+        simulatedVelocity.x ** 2
+      );
+
       const collisionData = getBallCollisionData(
         hitPoint,
         simulatedVelocity,
@@ -241,7 +266,7 @@ canvas.addEventListener("mousemove", (e) => {
         closestBallHit.velocity
       );
 
-      closestBallHit.forceNextCollisionVelocity = collisionData.ballBVelocity;
+      // closestBallHit.forceNextCollisionVelocity = collisionData.ballBVelocity;
 
       DEBUG_DRAW_LINES.push([
         closestBallHit.location,
@@ -279,6 +304,8 @@ const think = () => {
           otherBall.location,
           otherBall.velocity
         );
+
+        console.log("meme2", ball.velocity.x, ball.velocity.y);
 
         ball.velocity =
           ball.forceNextCollisionVelocity ?? collisionData.ballAVelocity;
