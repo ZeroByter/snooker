@@ -76,7 +76,7 @@ const addBall = (x, y, isPlayer, isStripped) => {
     isPlayer,
     isStripped,
     color: getBallColor(isPlayer, isStripped),
-    forceNextCollisionVelocity: null,
+    forceNextCollisionDirection: null,
   };
 
   balls.push(newBall);
@@ -84,22 +84,22 @@ const addBall = (x, y, isPlayer, isStripped) => {
   return newBall;
 };
 
-// for (let y = 0; y < 5; y++) {
-//   for (let x = 0; x < 6 - (y + 1); x++) {
-//     addBall(
-//       tableSize / 2 +
-//         (y - 4) * ((ballRadius * 2.25) / 2) +
-//         x * ballRadius * 2.25,
-//       tableSize * 0.33 + y * ballRadius * 2,
-//       false,
-//       balls.length < 7
-//     );
-//   }
-// }
-
-for (let i = 0; i < 4; i++) {
-  addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+for (let y = 0; y < 5; y++) {
+  for (let x = 0; x < 6 - (y + 1); x++) {
+    addBall(
+      tableSize / 2 +
+      (y - 4) * ((ballRadius * 2.25) / 2) +
+      x * ballRadius * 2.25,
+      tableSize * 0.33 + y * ballRadius * 2,
+      false,
+      balls.length < 7
+    );
+  }
 }
+
+// for (let i = 0; i < 4; i++) {
+//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+// }
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 
@@ -234,10 +234,6 @@ canvas.addEventListener("mousemove", (e) => {
 
       DEBUG_DRAW_LINES.push([playerBall.location, hitPoint]);
 
-      // simulatedVelocity = simulatedVelocity.multiply(
-      //   FRICTION_CONSTANT ** rayDistance
-      // );
-
       const before = simulatedVelocity.clone();
 
       simulatedVelocity.x = calculateFinalVelocity(
@@ -251,14 +247,6 @@ canvas.addEventListener("mousemove", (e) => {
         rayDistance
       );
 
-      console.log(
-        before.x,
-        before.y,
-        simulatedVelocity.x,
-        simulatedVelocity.y,
-        simulatedVelocity.x ** 2
-      );
-
       const collisionData = getBallCollisionData(
         hitPoint,
         simulatedVelocity,
@@ -266,7 +254,7 @@ canvas.addEventListener("mousemove", (e) => {
         closestBallHit.velocity
       );
 
-      // closestBallHit.forceNextCollisionVelocity = collisionData.ballBVelocity;
+      closestBallHit.forceNextCollisionDirection = collisionData.ballBVelocity.normalized();
 
       DEBUG_DRAW_LINES.push([
         closestBallHit.location,
@@ -305,15 +293,20 @@ const think = () => {
           otherBall.velocity
         );
 
-        console.log("meme2", ball.velocity.x, ball.velocity.y);
+        if (ball.forceNextCollisionDirection) {
+          ball.velocity = ball.forceNextCollisionDirection.multiply(collisionData.ballAVelocity.magnitude())
+        } else {
+          ball.velocity = collisionData.ballAVelocity
+        }
 
-        ball.velocity =
-          ball.forceNextCollisionVelocity ?? collisionData.ballAVelocity;
-        otherBall.velocity =
-          otherBall.forceNextCollisionVelocity ?? collisionData.ballBVelocity;
+        if (otherBall.forceNextCollisionDirection) {
+          otherBall.velocity = otherBall.forceNextCollisionDirection.multiply(collisionData.ballBVelocity.magnitude())
+        } else {
+          otherBall.velocity = collisionData.ballBVelocity
+        }
 
-        ball.forceNextCollisionVelocity = null;
-        otherBall.forceNextCollisionVelocity = null;
+        ball.forceNextCollisionDirection = null;
+        otherBall.forceNextCollisionDirection = null;
 
         ball.location = collisionData.ballANewLocation;
         otherBall.location = collisionData.ballBNewLocation;
