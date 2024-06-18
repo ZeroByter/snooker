@@ -76,7 +76,7 @@ const addBall = (x, y, isPlayer, isStripped) => {
     isPlayer,
     isStripped,
     color: getBallColor(isPlayer, isStripped),
-    forceNextCollisionVelocity: null,
+    forceNextCollisionDirection: null,
   };
 
   balls.push(newBall);
@@ -88,8 +88,8 @@ for (let y = 0; y < 5; y++) {
   for (let x = 0; x < 6 - (y + 1); x++) {
     addBall(
       tableSize / 2 +
-        (y - 4) * ((ballRadius * 2.25) / 2) +
-        x * ballRadius * 2.25,
+      (y - 4) * ((ballRadius * 2.25) / 2) +
+      x * ballRadius * 2.25,
       tableSize * 0.33 + y * ballRadius * 2,
       false,
       balls.length < 7
@@ -216,6 +216,10 @@ canvas.addEventListener("mousemove", (e) => {
       }
     }
 
+    const calculateFinalVelocity = (v1, f, d) => {
+      return v1 * f ** d;
+    };
+
     if (closestBallHit) {
       const rayDistance = rayDistanceToCircle(
         playerBall.location,
@@ -230,9 +234,18 @@ canvas.addEventListener("mousemove", (e) => {
 
       DEBUG_DRAW_LINES.push([playerBall.location, hitPoint]);
 
-      // simulatedVelocity = simulatedVelocity.multiply(
-      //   FRICTION_CONSTANT ** rayDistance
-      // );
+      const before = simulatedVelocity.clone();
+
+      simulatedVelocity.x = calculateFinalVelocity(
+        simulatedVelocity.x,
+        FRICTION_CONSTANT,
+        rayDistance
+      );
+      simulatedVelocity.y = calculateFinalVelocity(
+        simulatedVelocity.y,
+        FRICTION_CONSTANT,
+        rayDistance
+      );
 
       const collisionData = getBallCollisionData(
         hitPoint,
@@ -241,7 +254,7 @@ canvas.addEventListener("mousemove", (e) => {
         closestBallHit.velocity
       );
 
-      closestBallHit.forceNextCollisionVelocity = collisionData.ballBVelocity;
+      closestBallHit.forceNextCollisionDirection = collisionData.ballBVelocity.normalized();
 
       DEBUG_DRAW_LINES.push([
         closestBallHit.location,
@@ -280,13 +293,20 @@ const think = () => {
           otherBall.velocity
         );
 
-        ball.velocity =
-          ball.forceNextCollisionVelocity ?? collisionData.ballAVelocity;
-        otherBall.velocity =
-          otherBall.forceNextCollisionVelocity ?? collisionData.ballBVelocity;
+        if (ball.forceNextCollisionDirection) {
+          ball.velocity = ball.forceNextCollisionDirection.multiply(collisionData.ballAVelocity.magnitude())
+        } else {
+          ball.velocity = collisionData.ballAVelocity
+        }
 
-        ball.forceNextCollisionVelocity = null;
-        otherBall.forceNextCollisionVelocity = null;
+        if (otherBall.forceNextCollisionDirection) {
+          otherBall.velocity = otherBall.forceNextCollisionDirection.multiply(collisionData.ballBVelocity.magnitude())
+        } else {
+          otherBall.velocity = collisionData.ballBVelocity
+        }
+
+        ball.forceNextCollisionDirection = null;
+        otherBall.forceNextCollisionDirection = null;
 
         ball.location = collisionData.ballANewLocation;
         otherBall.location = collisionData.ballBNewLocation;
