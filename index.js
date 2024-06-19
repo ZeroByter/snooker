@@ -31,13 +31,24 @@ export const ballRadius = 3;
 const holeRadius = ballRadius * 1.5;
 
 let isMouseDown = false;
-let mouseLocation = new vector2();
 
 let aimData = {
   direction: null,
   aimMouseStartAngle: null,
   aimMouseStartLocation: null,
 }
+
+let onMouseHoldTimeout = -1;
+let isHoldingMouse = false;
+
+const powerChargeArea = 200
+const powerChargeMinLevel = 0.2
+const powerChargeMaxLevel = 8
+
+let powerChargeLevel = 0;
+let powerChargeMouseStartLocation = null;
+
+let gameState = "playing" // or "win" or "lose", too lazy to do proper enum sue me
 
 let zoom = Math.min(canvas.width + 300, canvas.height) / 100 / 2 - 0.5;
 
@@ -53,6 +64,13 @@ const ballColors = [
 const availableBallColors = [...ballColors];
 const availableStrippedBallColors = [...ballColors];
 let balls = [];
+
+window.addEventListener("resize", e => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  zoom = Math.min(canvas.width + 300, canvas.height) / 100 / 2 - 0.5;
+})
 
 const holes = [];
 
@@ -107,6 +125,7 @@ for (let i = 0; i < 2; i++) {
 }
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
+let isAlive = true;
 
 const addHole = (x, y) => {
   holes.push({
@@ -161,55 +180,107 @@ const areAllBallsStopped = () => {
   return totalBallsSpeed < 0.01
 }
 
-canvas.addEventListener("mouseup", (e) => {
+const onMouseHold = (mouseLocation) => {
+  isHoldingMouse = true;
+
+  powerChargeLevel = 0
+  powerChargeMouseStartLocation = mouseLocation
+}
+
+const onMouseUp = () => {
+  clearTimeout(onMouseHoldTimeout)
   isMouseDown = false;
-  // DEBUG_DRAW_LINES = [];
+
+  if (isHoldingMouse) {
+    playerBall.velocity = aimData.direction.multiply(powerChargeLevel)
+    aimData.direction = null
+  }
+
+  isHoldingMouse = false;
 
   if (!areAllBallsStopped()) {
     return;
   }
+};
 
-  // const tableLocation = screenToTableLocation(e.clientX, e.clientY);
+canvas.addEventListener("mouseup", (e) => {
+  onMouseUp()
+})
+canvas.addEventListener("touchend", e => {
+  onMouseUp()
+})
 
-  // const dir = tableLocation.minus(playerBall.location).multiply(0.035);
+const initializeAiming = (x, y) => {
+  const tableLocation = screenToTableLocation(x, y);
+  aimData.direction = tableLocation.minus(playerBall.location).normalized()
 
-  // playerBall.velocity = dir;
-});
+  aimData.aimMouseStartAngle = aimData.direction.toAngle()
+  aimData.aimMouseStartLocation = new vector2(x, y)
+}
 
-canvas.addEventListener("mousedown", (e) => {
+const onMouseDown = (mouseX, mouseY) => {
+  if (!isAlive) {
+    return null
+  }
+
   isMouseDown = true;
+
+  onMouseHoldTimeout = setTimeout(() => onMouseHold(new vector2(mouseX, mouseY)), 500)
 
   if (!areAllBallsStopped()) {
     return;
   }
 
   if (aimData.direction == null) {
-    const tableLocation = screenToTableLocation(e.clientX, e.clientY);
-    aimData.direction = tableLocation.minus(playerBall.location).normalized()
+    initializeAiming(mouseX, mouseY)
   }
 
   aimData.aimMouseStartAngle = aimData.direction.toAngle()
-  aimData.aimMouseStartLocation = new vector2(e.clientX, e.clientY)
+  aimData.aimMouseStartLocation = new vector2(mouseX, mouseY)
+};
 
-  // for (const ball of balls) {
-  //   ball.velocity = new vector2();
-  // }
-});
+canvas.addEventListener("mousedown", (e) => {
+  onMouseDown(e.clientX, e.clientY)
+})
+canvas.addEventListener("touchstart", e => {
+  onMouseDown(e.touches[0].clientX, e.touches[0].clientY)
+})
 
-canvas.addEventListener("mousemove", (e) => {
+const onMouseMove = (mouseX, mouseY) => {
+  if (!isAlive) {
+    return null
+  }
+
   if (isMouseDown) {
+    clearTimeout(onMouseHoldTimeout)
+
     if (!areAllBallsStopped()) {
       return;
     }
 
-    if (aimData.direction != null) {
-      const mouseLocation = new vector2(e.clientX, e.clientY)
-      const mouseMovement = mouseLocation.minus(aimData.aimMouseStartLocation)
+    if (aimData.direction == null) {
+      initializeAiming(mouseX, mouseY)
+    }
 
-      aimData.direction = vector2.fromAngle(aimData.aimMouseStartAngle - (mouseMovement.x / 180 * Math.PI * lerp(0, 20, 1 - e.clientY / window.innerHeight)))
+    if (aimData.direction != null) {
+      const mouseLocation = new vector2(mouseX, mouseY)
+      if (isHoldingMouse) {
+        powerChargeLevel = Math.min(1, mouseLocation.distance(powerChargeMouseStartLocation) / powerChargeArea) * powerChargeMaxLevel
+      } else {
+        const mouseMovement = mouseLocation.minus(aimData.aimMouseStartLocation)
+
+        aimData.direction = vector2.fromAngle(aimData.aimMouseStartAngle - (mouseMovement.x / 180 * Math.PI * lerp(0, 20, 1 - mouseY / window.innerHeight)))
+      }
     }
   }
-});
+}
+
+canvas.addEventListener("mousemove", (e) => {
+  onMouseMove(e.clientX, e.clientY)
+})
+canvas.addEventListener("touchmove", e => {
+  onMouseMove(e.touches[0].clientX, e.touches[0].clientY)
+})
 
 const clearBallsForceNextCollisionDirection = () => {
   for (const ball of balls) {
@@ -233,29 +304,47 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
     let closestBallHit = null;
     let closestBallDistance = 1000;
 
-    const refinedBallRadius = ballRadius * 2;
+    let hitHole = false;
 
-    for (const ball of balls) {
-      if (ball.location.distance(lineStart) < ballRadius / 2) {
-        continue
-      }
-      if (ball == playerBall) {
-        continue;
-      }
-
-      if (
-        doesRayInterceptCircle(
+    for (const hole of holes) {
+      if (doesRayInterceptCircle(lineStart, lineEnd, hole.location, holeRadius + ballRadius)) {
+        const rayDistance = rayDistanceToCircle(
           lineStart,
           lineEnd,
-          ball.location,
-          refinedBallRadius
-        )
-      ) {
-        const ballDistance = ball.location.distance(lineStart);
+          hole.location,
+          holeRadius + ballRadius
+        );
 
-        if (closestBallHit == null || ballDistance < closestBallDistance) {
-          closestBallHit = ball;
-          closestBallDistance = ballDistance;
+        minimumLength = Math.min(minimumLength, rayDistance)
+
+        hitHole = true
+        break
+      }
+    }
+
+    if (!hitHole) {
+      for (const ball of balls) {
+        if (ball.location.distance(lineStart) < ballRadius / 2) {
+          continue
+        }
+        if (ball == playerBall) {
+          continue;
+        }
+
+        if (
+          doesRayInterceptCircle(
+            lineStart,
+            lineEnd,
+            ball.location,
+            ballRadius * 2
+          )
+        ) {
+          const ballDistance = ball.location.distance(lineStart);
+
+          if (closestBallHit == null || ballDistance < closestBallDistance) {
+            closestBallHit = ball;
+            closestBallDistance = ballDistance;
+          }
         }
       }
     }
@@ -265,7 +354,7 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
         lineStart,
         lineEnd,
         closestBallHit.location,
-        refinedBallRadius
+        ballRadius * 2
       );
 
       const hitPoint = lineStart.add(
@@ -294,7 +383,7 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
     // Finish detecting ball collisions
 
     // Begin detecting wall collisions
-    if (closestBallHit == null) {
+    if (closestBallHit == null && !hitHole) {
       const leftWallCollision = doLinesIntersect(lineStart, lineEnd, new vector2(), new vector2(0, tableSize * 2))
       if (leftWallCollision) {
         minimumLength = Math.min(minimumLength, lineStart.distance(leftWallCollision))
@@ -320,6 +409,25 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
 
     const finalLineEnd = lineStart.add(direction.multiply(minimumLength))
 
+    // Render power charge level on first projected line
+    // if (isHoldingMouse && powerChargeLevel > powerChargeMinLevel && iteration == 0) {
+    //   const powerChargeLineEnd = lineStart.add(direction.multiply(powerChargeLevel / powerChargeMaxLevel * minimumLength))
+    //   ctx.strokeStyle = "rgba(255,0,0,0.6)"
+    //   ctx.beginPath();
+    //   ctx.lineWidth = 15
+    //   ctx.moveTo(
+    //     canvas.width / 2 - (tableSize / 2) * zoom + lineStart.x * zoom,
+    //     canvas.height / 2 - tableSize * zoom + lineStart.y * zoom
+    //   );
+    //   ctx.lineTo(
+    //     canvas.width / 2 - (tableSize / 2) * zoom + powerChargeLineEnd.x * zoom,
+    //     canvas.height / 2 - tableSize * zoom + powerChargeLineEnd.y * zoom
+    //   );
+    //   ctx.stroke()
+    // }
+
+    ctx.strokeStyle = "white"
+    ctx.lineWidth = 1
     ctx.beginPath();
     ctx.moveTo(
       canvas.width / 2 - (tableSize / 2) * zoom + lineStart.x * zoom,
@@ -388,6 +496,15 @@ const think = () => {
     const nearHole = getHoleNearBallLocation(ball.location);
     if (nearHole) {
       balls = balls.filter((b) => b != ball);
+
+      if (ball == playerBall) {
+        gameState = "lose"
+        isAlive = false;
+      } else {
+        if (balls.length == 1 && isAlive) {
+          gameState = "win"
+        }
+      }
     }
 
     ball.velocity = ball.velocity.multiply(FRICTION_CONSTANT);
@@ -465,9 +582,27 @@ const render = () => {
   }
 
   if (aimData.direction != null) {
-    ctx.strokeStyle = "white"
     clearBallsForceNextCollisionDirection()
     drawLine(ctx, playerBall.location, aimData.direction, 0)
+
+    if (isHoldingMouse) {
+      ctx.strokeStyle = `rgba(255,0,0,${powerChargeLevel > powerChargeMinLevel ? 1 : 0.75})`
+      ctx.beginPath()
+      ctx.arc(powerChargeMouseStartLocation.x, powerChargeMouseStartLocation.y, powerChargeMinLevel / powerChargeMaxLevel * powerChargeArea, 0, Math.PI * 2)
+      ctx.stroke()
+
+      if (powerChargeLevel > powerChargeMinLevel) {
+        ctx.fillStyle = `rgba(255,0,0,0.25)`
+        ctx.beginPath()
+        ctx.arc(powerChargeMouseStartLocation.x, powerChargeMouseStartLocation.y, powerChargeLevel / powerChargeMaxLevel * powerChargeArea, 0, Math.PI * 2, false)
+        ctx.arc(powerChargeMouseStartLocation.x, powerChargeMouseStartLocation.y, powerChargeMinLevel / powerChargeMaxLevel * powerChargeArea, 0, Math.PI * 2, true)
+        ctx.fill()
+      }
+
+      ctx.beginPath()
+      ctx.arc(powerChargeMouseStartLocation.x, powerChargeMouseStartLocation.y, powerChargeArea, 0, Math.PI * 2)
+      ctx.stroke()
+    }
   }
 
   ctx.strokeStyle = "white";
@@ -482,6 +617,42 @@ const render = () => {
       canvas.height / 2 - tableSize * zoom + lineEnd.y * zoom
     );
     ctx.stroke();
+  }
+
+  ctx.textAlign = "center"
+
+  if (gameState == "win") {
+    ctx.font = "52px Arial"
+    ctx.fillStyle = "black"
+    ctx.fillText("You win!", canvas.width / 2, canvas.height / 2)
+
+    ctx.font = "50px Arial"
+    ctx.fillStyle = "white"
+    ctx.fillText("You win!", canvas.width / 2, canvas.height / 2)
+
+    ctx.font = "32px Arial"
+    ctx.fillStyle = "black"
+    ctx.fillText("yay", canvas.width / 2, canvas.height / 2 + 30)
+
+    ctx.font = "30px Arial"
+    ctx.fillStyle = "white"
+    ctx.fillText("yay", canvas.width / 2, canvas.height / 2 + 30)
+  } else if (gameState == "lose") {
+    ctx.font = "52px Arial"
+    ctx.fillStyle = "red"
+    ctx.fillText("You lost!", canvas.width / 2, canvas.height / 2)
+
+    ctx.font = "50px Arial"
+    ctx.fillStyle = "white"
+    ctx.fillText("You lost!", canvas.width / 2, canvas.height / 2)
+
+    ctx.font = "32px Arial"
+    ctx.fillStyle = "red"
+    ctx.fillText("loser", canvas.width / 2, canvas.height / 2 + 30)
+
+    ctx.font = "30px Arial"
+    ctx.fillStyle = "white"
+    ctx.fillText("loser", canvas.width / 2, canvas.height / 2 + 30)
   }
 };
 
