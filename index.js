@@ -31,6 +31,7 @@ export const ballRadius = 3;
 const holeRadius = ballRadius * 1.5;
 
 let isMouseDown = false;
+let mouseDownLocation = null;
 
 let aimData = {
   direction: null,
@@ -224,6 +225,7 @@ const onMouseDown = (mouseX, mouseY) => {
   }
 
   isMouseDown = true;
+  mouseDownLocation = new vector2(mouseX, mouseY)
 
   onMouseHoldTimeout = setTimeout(() => onMouseHold(new vector2(mouseX, mouseY)), 500)
 
@@ -252,7 +254,13 @@ const onMouseMove = (mouseX, mouseY) => {
   }
 
   if (isMouseDown) {
-    clearTimeout(onMouseHoldTimeout)
+    const mouseLocation = new vector2(mouseX, mouseY)
+
+    const mouseMovement = mouseLocation.minus(mouseDownLocation)
+
+    if (mouseMovement.magnitude() > 15) {
+      clearTimeout(onMouseHoldTimeout)
+    }
 
     if (!areAllBallsStopped()) {
       return;
@@ -263,7 +271,6 @@ const onMouseMove = (mouseX, mouseY) => {
     }
 
     if (aimData.direction != null) {
-      const mouseLocation = new vector2(mouseX, mouseY)
       if (isHoldingMouse) {
         powerChargeLevel = Math.min(1, mouseLocation.distance(powerChargeMouseStartLocation) / powerChargeArea) * powerChargeMaxLevel
       } else {
