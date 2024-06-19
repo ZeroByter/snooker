@@ -65,7 +65,7 @@ export const doesRayInterceptCircle = (rayStart, rayEnd, circle, radius) => {
     Math.max(
       0,
       ((circle.x - rayStart.x) * dx + (circle.y - rayStart.y) * dy) /
-        (dy * dy + dx * dx)
+      (dy * dy + dx * dx)
     )
   );
   const nx = rayStart.x + dx * u - circle.x;
@@ -141,3 +141,39 @@ export const getBallCollisionData = (
     ballBNewLocation: ballBLocation.add(overlap * normal.x, overlap * normal.y),
   };
 };
+
+// line intercept math by Paul Bourke http://paulbourke.net/geometry/pointlineplane/
+// Determine the intersection point of two line segments
+// Return null if the lines don't intersect
+const doLinesIntersectRaw = (x1, y1, x2, y2, x3, y3, x4, y4) => {
+
+  // Check if none of the lines are of length 0
+  if ((x1 === x2 && y1 === y2) || (x3 === x4 && y3 === y4)) {
+    return false
+  }
+
+  let denominator = ((y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1))
+
+  // Lines are parallel
+  if (denominator === 0) {
+    return null
+  }
+
+  let ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denominator
+  let ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denominator
+
+  // is the intersection along the segments
+  if (ua < 0 || ua > 1 || ub < 0 || ub > 1) {
+    return null
+  }
+
+  // Return a object with the x and y coordinates of the intersection
+  let x = x1 + ua * (x2 - x1)
+  let y = y1 + ua * (y2 - y1)
+
+  return new vector2(x, y)
+}
+
+export const doLinesIntersect = (line1Start, line1End, line2Start, line2End) => {
+  return doLinesIntersectRaw(line1Start.x, line1Start.y, line1End.x, line1End.y, line2Start.x, line2Start.y, line2End.x, line2End.y)
+}

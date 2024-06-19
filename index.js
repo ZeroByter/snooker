@@ -1,8 +1,10 @@
 import vector2 from "./vector2.js";
 import {
+  doLinesIntersect,
   doesRayInterceptCircle,
   getBallCollisionData,
   ilerpUnclamped,
+  lerp,
   rayDistanceToCircle,
 } from "./math.js";
 
@@ -30,6 +32,12 @@ const holeRadius = ballRadius * 1.5;
 
 let isMouseDown = false;
 let mouseLocation = new vector2();
+
+let aimData = {
+  direction: null,
+  aimMouseStartAngle: null,
+  aimMouseStartLocation: null,
+}
 
 let zoom = Math.min(canvas.width + 300, canvas.height) / 100 / 2 - 0.5;
 
@@ -81,22 +89,22 @@ const addBall = (x, y, isPlayer, isStripped) => {
   return newBall;
 };
 
-for (let y = 0; y < 5; y++) {
-  for (let x = 0; x < 6 - (y + 1); x++) {
-    addBall(
-      tableSize / 2 +
-      (y - 4) * ((ballRadius * 2.25) / 2) +
-      x * ballRadius * 2.25,
-      tableSize * 0.33 + y * ballRadius * 2,
-      false,
-      balls.length < 7
-    );
-  }
-}
-
-// for (let i = 0; i < 4; i++) {
-//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+// for (let y = 0; y < 5; y++) {
+//   for (let x = 0; x < 6 - (y + 1); x++) {
+//     addBall(
+//       tableSize / 2 +
+//       (y - 4) * ((ballRadius * 2.25) / 2) +
+//       x * ballRadius * 2.25,
+//       tableSize * 0.33 + y * ballRadius * 2,
+//       false,
+//       balls.length < 7
+//     );
+//   }
 // }
+
+for (let i = 0; i < 2; i++) {
+  addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+}
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 
@@ -155,21 +163,33 @@ const areAllBallsStopped = () => {
 
 canvas.addEventListener("mouseup", (e) => {
   isMouseDown = false;
-  DEBUG_DRAW_LINES = [];
+  // DEBUG_DRAW_LINES = [];
 
   if (!areAllBallsStopped()) {
     return;
   }
 
-  const tableLocation = screenToTableLocation(e.clientX, e.clientY);
+  // const tableLocation = screenToTableLocation(e.clientX, e.clientY);
 
-  const dir = tableLocation.minus(playerBall.location).multiply(0.035);
+  // const dir = tableLocation.minus(playerBall.location).multiply(0.035);
 
-  playerBall.velocity = dir;
+  // playerBall.velocity = dir;
 });
 
 canvas.addEventListener("mousedown", (e) => {
   isMouseDown = true;
+
+  if (!areAllBallsStopped()) {
+    return;
+  }
+
+  if (aimData.direction == null) {
+    const tableLocation = screenToTableLocation(e.clientX, e.clientY);
+    aimData.direction = tableLocation.minus(playerBall.location).normalized()
+  }
+
+  aimData.aimMouseStartAngle = aimData.direction.toAngle()
+  aimData.aimMouseStartLocation = new vector2(e.clientX, e.clientY)
 
   // for (const ball of balls) {
   //   ball.velocity = new vector2();
@@ -178,44 +198,60 @@ canvas.addEventListener("mousedown", (e) => {
 
 canvas.addEventListener("mousemove", (e) => {
   if (isMouseDown) {
-    DEBUG_DRAW_LINES = [];
-
     if (!areAllBallsStopped()) {
       return;
     }
 
-    const tableLocation = screenToTableLocation(e.clientX, e.clientY);
+    if (aimData.direction != null) {
+      const mouseLocation = new vector2(e.clientX, e.clientY)
+      const mouseMovement = mouseLocation.minus(aimData.aimMouseStartLocation)
 
-    const initialVelocity = tableLocation
-      .minus(playerBall.location)
-      .multiply(0.035);
-    const normalizedInitialVelocity = initialVelocity.normalized();
+      aimData.direction = vector2.fromAngle(aimData.aimMouseStartAngle - (mouseMovement.x / 180 * Math.PI * lerp(0, 20, 1 - e.clientY / window.innerHeight)))
+    }
+  }
+});
 
-    let simulatedVelocity = initialVelocity.clone();
+const clearBallsForceNextCollisionDirection = () => {
+  for (const ball of balls) {
+    ball.forceNextCollisionDirection = null
+  }
+}
 
-    const rayEnd = playerBall.location.add(
-      normalizedInitialVelocity.multiply(300)
-    );
+/**
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {vector2} start 
+ * @param {vector2} direction 
+ * @param {number} iteration 
+ */
+const drawLine = (ctx, lineStart, direction, iteration) => {
+  if (iteration < 4) {
+    let minimumLength = 80
 
+    const lineEnd = lineStart.add(direction.multiply(minimumLength))
+
+    // Begin detecting ball collisions
     let closestBallHit = null;
     let closestBallDistance = 1000;
 
     const refinedBallRadius = ballRadius * 2;
 
     for (const ball of balls) {
+      if (ball.location.distance(lineStart) < ballRadius / 2) {
+        continue
+      }
       if (ball == playerBall) {
         continue;
       }
 
       if (
         doesRayInterceptCircle(
-          playerBall.location,
-          rayEnd,
+          lineStart,
+          lineEnd,
           ball.location,
           refinedBallRadius
         )
       ) {
-        const ballDistance = ball.location.distance(playerBall.location);
+        const ballDistance = ball.location.distance(lineStart);
 
         if (closestBallHit == null || ballDistance < closestBallDistance) {
           closestBallHit = ball;
@@ -224,55 +260,78 @@ canvas.addEventListener("mousemove", (e) => {
       }
     }
 
-    const calculateFinalVelocity = (v1, f, d) => {
-      return v1 * f ** d;
-    };
-
     if (closestBallHit) {
       const rayDistance = rayDistanceToCircle(
-        playerBall.location,
-        rayEnd,
+        lineStart,
+        lineEnd,
         closestBallHit.location,
         refinedBallRadius
       );
 
-      const hitPoint = playerBall.location.add(
-        normalizedInitialVelocity.multiply(rayDistance)
+      const hitPoint = lineStart.add(
+        direction.multiply(rayDistance)
       );
 
-      DEBUG_DRAW_LINES.push([playerBall.location, hitPoint]);
-
-      const before = simulatedVelocity.clone();
-
-      simulatedVelocity.x = calculateFinalVelocity(
-        simulatedVelocity.x,
-        FRICTION_CONSTANT,
-        rayDistance
-      );
-      simulatedVelocity.y = calculateFinalVelocity(
-        simulatedVelocity.y,
-        FRICTION_CONSTANT,
-        rayDistance
-      );
 
       const collisionData = getBallCollisionData(
         hitPoint,
-        simulatedVelocity,
+        direction,
         closestBallHit.location,
         closestBallHit.velocity
       );
 
       closestBallHit.forceNextCollisionDirection = collisionData.ballBVelocity.normalized();
 
-      DEBUG_DRAW_LINES.push([
+      drawLine(
+        ctx,
         closestBallHit.location,
-        closestBallHit.location.add(
-          collisionData.ballBVelocity.normalized().multiply(100)
-        ),
-      ]);
+        collisionData.ballBVelocity.normalized(),
+        iteration + 1
+      )
+
+      minimumLength = Math.min(minimumLength, rayDistance)
     }
+    // Finish detecting ball collisions
+
+    // Begin detecting wall collisions
+    if (closestBallHit == null) {
+      const leftWallCollision = doLinesIntersect(lineStart, lineEnd, new vector2(), new vector2(0, tableSize * 2))
+      if (leftWallCollision) {
+        minimumLength = Math.min(minimumLength, lineStart.distance(leftWallCollision))
+        drawLine(ctx, leftWallCollision.add(0.01, 0), new vector2(-direction.x, direction.y), iteration + 1)
+      }
+      const rightWallCollision = doLinesIntersect(lineStart, lineEnd, new vector2(tableSize, 0), new vector2(tableSize, tableSize * 2))
+      if (rightWallCollision) {
+        minimumLength = Math.min(minimumLength, lineStart.distance(rightWallCollision))
+        drawLine(ctx, rightWallCollision.add(-0.01, 0), new vector2(-direction.x, direction.y), iteration + 1)
+      }
+      const topWallCollision = doLinesIntersect(lineStart, lineEnd, new vector2(0, 0), new vector2(tableSize, 0))
+      if (topWallCollision) {
+        minimumLength = Math.min(minimumLength, lineStart.distance(topWallCollision))
+        drawLine(ctx, topWallCollision.add(0, 0.01), new vector2(direction.x, -direction.y), iteration + 1)
+      }
+      const bottomWallCollision = doLinesIntersect(lineStart, lineEnd, new vector2(0, tableSize * 2), new vector2(tableSize, tableSize * 2))
+      if (bottomWallCollision) {
+        minimumLength = Math.min(minimumLength, lineStart.distance(bottomWallCollision))
+        drawLine(ctx, bottomWallCollision.add(0, -0.01), new vector2(direction.x, -direction.y), iteration + 1)
+      }
+    }
+    // Finish detecting wall collisions
+
+    const finalLineEnd = lineStart.add(direction.multiply(minimumLength))
+
+    ctx.beginPath();
+    ctx.moveTo(
+      canvas.width / 2 - (tableSize / 2) * zoom + lineStart.x * zoom,
+      canvas.height / 2 - tableSize * zoom + lineStart.y * zoom
+    );
+    ctx.lineTo(
+      canvas.width / 2 - (tableSize / 2) * zoom + finalLineEnd.x * zoom,
+      canvas.height / 2 - tableSize * zoom + finalLineEnd.y * zoom
+    );
+    ctx.stroke()
   }
-});
+}
 
 const think = () => {
   for (const ball of balls) {
@@ -405,6 +464,12 @@ const render = () => {
     }
   }
 
+  if (aimData.direction != null) {
+    ctx.strokeStyle = "white"
+    clearBallsForceNextCollisionDirection()
+    drawLine(ctx, playerBall.location, aimData.direction, 0)
+  }
+
   ctx.strokeStyle = "white";
   for (const [lineStart, lineEnd] of DEBUG_DRAW_LINES) {
     ctx.beginPath();
@@ -418,8 +483,6 @@ const render = () => {
     );
     ctx.stroke();
   }
-
-  // TODO: render player ball trajectory, need to calculate first...
 };
 
 const mainLoop = (time) => {
