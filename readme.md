@@ -5,3 +5,4 @@
 - ~~aiming trajectory preview~~
   - transitioning from aiming to shooting (choosing strength)
 - mobile support
+  ` ``````````````````````````````
