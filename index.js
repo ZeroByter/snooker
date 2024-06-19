@@ -107,22 +107,22 @@ const addBall = (x, y, isPlayer, isStripped) => {
   return newBall;
 };
 
-// for (let y = 0; y < 5; y++) {
-//   for (let x = 0; x < 6 - (y + 1); x++) {
-//     addBall(
-//       tableSize / 2 +
-//       (y - 4) * ((ballRadius * 2.25) / 2) +
-//       x * ballRadius * 2.25,
-//       tableSize * 0.33 + y * ballRadius * 2,
-//       false,
-//       balls.length < 7
-//     );
-//   }
-// }
-
-for (let i = 0; i < 2; i++) {
-  addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+for (let y = 0; y < 5; y++) {
+  for (let x = 0; x < 6 - (y + 1); x++) {
+    addBall(
+      tableSize / 2 +
+      (y - 4) * ((ballRadius * 2.25) / 2) +
+      x * ballRadius * 2.25,
+      tableSize * 0.33 + y * ballRadius * 2,
+      false,
+      balls.length < 7
+    );
+  }
 }
+
+// for (let i = 0; i < 2; i++) {
+//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+// }
 
 const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 let isAlive = true;
