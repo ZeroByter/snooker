@@ -1,5 +1,6 @@
 import vector2 from "./vector2.js";
 import {
+  clamp,
   deltaAngle,
   doLinesIntersect,
   doesRayInterceptCircle,
@@ -26,6 +27,8 @@ let ticks = 0;
 let DEBUG_DRAW_LINES = [];
 
 // some constants
+const SAVE_GAME_KEY = "snooker_balls_data";
+
 const tableSize = 100;
 
 const FRICTION_CONSTANT = 0.985;
@@ -53,8 +56,15 @@ const powerChargeMaxLevel = 7;
 let powerChargeLevel = 0;
 let powerChargeMouseStartLocation = null;
 
+let lastAllBallsStopped = true;
+
 let gameState = "playing"; // or "win" or "lose", too lazy to do proper enum sue me
 
+const backgroundColor = {
+  r: 15,
+  g: 15,
+  b: 15,
+};
 let zoom = Math.min(canvas.width + 300, canvas.height) / 100 / 2 - 0.5;
 
 const ballColors = [
@@ -112,24 +122,7 @@ const addBall = (x, y, isPlayer, isStripped) => {
   return newBall;
 };
 
-for (let y = 0; y < 5; y++) {
-  for (let x = 0; x < 6 - (y + 1); x++) {
-    addBall(
-      tableSize / 2 +
-        (y - 4) * ((ballRadius * 2.25) / 2) +
-        x * ballRadius * 2.25,
-      tableSize * 0.33 + y * ballRadius * 2,
-      false,
-      balls.length < 7
-    );
-  }
-}
-
-// for (let i = 0; i < 2; i++) {
-//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
-// }
-
-const playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
+let playerBall = null;
 let isAlive = true;
 
 const addHole = (x, y) => {
@@ -417,7 +410,7 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
     // Finish detecting ball collisions
 
     // Begin detecting wall collisions
-    if (closestBallHit == null && !hitHole) {
+    if (closestBallHit == null) {
       const leftWallCollision = doLinesIntersect(
         lineStart,
         lineEnd,
@@ -429,12 +422,13 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
           minimumLength,
           lineStart.distance(leftWallCollision)
         );
-        drawLine(
-          ctx,
-          leftWallCollision.add(0.01, 0),
-          new vector2(-direction.x, direction.y),
-          iteration + 1
-        );
+        !hitHole &&
+          drawLine(
+            ctx,
+            leftWallCollision.add(0.01, 0),
+            new vector2(-direction.x, direction.y),
+            iteration + 1
+          );
       }
       const rightWallCollision = doLinesIntersect(
         lineStart,
@@ -447,12 +441,13 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
           minimumLength,
           lineStart.distance(rightWallCollision)
         );
-        drawLine(
-          ctx,
-          rightWallCollision.add(-0.01, 0),
-          new vector2(-direction.x, direction.y),
-          iteration + 1
-        );
+        !hitHole &&
+          drawLine(
+            ctx,
+            rightWallCollision.add(-0.01, 0),
+            new vector2(-direction.x, direction.y),
+            iteration + 1
+          );
       }
       const topWallCollision = doLinesIntersect(
         lineStart,
@@ -465,12 +460,13 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
           minimumLength,
           lineStart.distance(topWallCollision)
         );
-        drawLine(
-          ctx,
-          topWallCollision.add(0, 0.01),
-          new vector2(direction.x, -direction.y),
-          iteration + 1
-        );
+        !hitHole &&
+          drawLine(
+            ctx,
+            topWallCollision.add(0, 0.01),
+            new vector2(direction.x, -direction.y),
+            iteration + 1
+          );
       }
       const bottomWallCollision = doLinesIntersect(
         lineStart,
@@ -483,12 +479,13 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
           minimumLength,
           lineStart.distance(bottomWallCollision)
         );
-        drawLine(
-          ctx,
-          bottomWallCollision.add(0, -0.01),
-          new vector2(direction.x, -direction.y),
-          iteration + 1
-        );
+        !hitHole &&
+          drawLine(
+            ctx,
+            bottomWallCollision.add(0, -0.01),
+            new vector2(direction.x, -direction.y),
+            iteration + 1
+          );
       }
     }
     // Finish detecting wall collisions
@@ -528,6 +525,22 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
 };
 
 const think = () => {
+  const allBallsStopped = areAllBallsStopped();
+
+  if (allBallsStopped != lastAllBallsStopped && allBallsStopped) {
+    backgroundColor.r = 35;
+    backgroundColor.g = 35;
+    backgroundColor.b = 35;
+
+    localStorage.setItem(SAVE_GAME_KEY, JSON.stringify(balls));
+  }
+
+  lastAllBallsStopped = allBallsStopped;
+
+  backgroundColor.r = lerp(backgroundColor.r, 15, 0.05);
+  backgroundColor.g = lerp(backgroundColor.g, 15, 0.05);
+  backgroundColor.b = lerp(backgroundColor.b, 15, 0.05);
+
   for (const ball of balls) {
     ball.location = ball.location.add(ball.velocity);
 
@@ -575,12 +588,14 @@ const think = () => {
       ball.location.x + ballRadius > tableSize
     ) {
       ball.velocity.x = -ball.velocity.x;
+      ball.location.x = clamp(0, tableSize, ball.location.x);
     }
     if (
       ball.location.y - ballRadius < 0 ||
       ball.location.y + ballRadius > tableSize * 2
     ) {
       ball.velocity.y = -ball.velocity.y;
+      ball.location.y = clamp(0, tableSize * 2, ball.location.y);
     }
 
     const nearHole = getHoleNearBallLocation(ball.location);
@@ -602,7 +617,7 @@ const think = () => {
 };
 
 const render = () => {
-  ctx.fillStyle = "rgb(15,15,15)";
+  ctx.fillStyle = `rgb(${backgroundColor.r}, ${backgroundColor.g}, ${backgroundColor.b})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   const tablePadding = 10;
@@ -788,5 +803,54 @@ const mainLoop = (time) => {
     mainLoop(time);
   });
 };
+
+let createDefaultGame = () => {
+  for (let y = 0; y < 5; y++) {
+    for (let x = 0; x < 6 - (y + 1); x++) {
+      addBall(
+        tableSize / 2 +
+          (y - 4) * ((ballRadius * 2.25) / 2) +
+          x * ballRadius * 2.25,
+        tableSize * 0.33 + y * ballRadius * 2,
+        false,
+        balls.length < 7
+      );
+    }
+  }
+
+  playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
+};
+
+let storedBallsData = localStorage.getItem(SAVE_GAME_KEY);
+if (storedBallsData) {
+  render();
+
+  if (confirm("Saved game found, continue where you left off?")) {
+    balls = JSON.parse(storedBallsData);
+
+    for (const ball of balls) {
+      ball.location = new vector2(ball.location);
+      ball.velocity = new vector2(ball.velocity);
+      if (ball.isPlayer) {
+        playerBall = ball;
+      }
+    }
+
+    if (playerBall == null) {
+      isAlive = false;
+      gameState = "lose";
+    }
+  } else {
+    localStorage.removeItem(SAVE_GAME_KEY);
+
+    createDefaultGame();
+  }
+} else {
+  createDefaultGame();
+}
+
+// for (let i = 0; i < 2; i++) {
+//   addBall(Math.random() * 80 + 10, Math.random() * 180 + 10, false, false);
+// }
 
 window.requestAnimationFrame(mainLoop);
