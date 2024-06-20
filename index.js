@@ -527,7 +527,7 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
 const think = () => {
   const allBallsStopped = areAllBallsStopped();
 
-  if (allBallsStopped != lastAllBallsStopped && allBallsStopped) {
+  if (allBallsStopped != lastAllBallsStopped && allBallsStopped && isAlive) {
     backgroundColor.r = 35;
     backgroundColor.g = 35;
     backgroundColor.b = 35;
@@ -602,12 +602,20 @@ const think = () => {
     if (nearHole) {
       balls = balls.filter((b) => b != ball);
 
-      if (ball == playerBall) {
+      if (ball.isPlayer) {
+        backgroundColor.r = 40;
+      } else {
+        backgroundColor.g = 50;
+      }
+
+      if (ball.isPlayer) {
         gameState = "lose";
         isAlive = false;
+        localStorage.removeItem(SAVE_GAME_KEY);
       } else {
         if (balls.length == 1 && isAlive) {
           gameState = "win";
+          localStorage.removeItem(SAVE_GAME_KEY);
         }
       }
     }
