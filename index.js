@@ -196,7 +196,7 @@ const onMouseUp = () => {
   clearTimeout(onMouseHoldTimeout);
   isMouseDown = false;
 
-  if (isHoldingMouse) {
+  if (isHoldingMouse && powerChargeLevel > 0) {
     playerBall.velocity = aimData.direction.multiply(
       powerChargeLevel * powerChargeMaxLevel
     );
