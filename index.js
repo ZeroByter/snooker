@@ -1,11 +1,14 @@
 import vector2 from "./vector2.js";
 import {
+  deltaAngle,
   doLinesIntersect,
   doesRayInterceptCircle,
   getBallCollisionData,
+  ilerp,
   ilerpUnclamped,
   lerp,
   rayDistanceToCircle,
+  repeat,
 } from "./math.js";
 
 const canvas = document.querySelector("canvas");
@@ -35,8 +38,8 @@ let mouseDownLocation = null;
 
 let aimData = {
   direction: null,
+  aimStartAngle: null,
   aimMouseStartAngle: null,
-  aimMouseStartLocation: null,
 };
 
 let onMouseHoldTimeout = -1;
@@ -44,8 +47,7 @@ let isHoldingMouse = false;
 
 const powerChargeArea = 200;
 const powerChargeMinArea = 50;
-const powerChargeMinLevel = 0.25;
-const powerChargeMaxLevel = 8;
+const powerChargeMaxLevel = 7;
 
 let powerChargeLevel = 0;
 let powerChargeMouseStartLocation = null;
@@ -194,7 +196,9 @@ const onMouseUp = () => {
   isMouseDown = false;
 
   if (isHoldingMouse) {
-    playerBall.velocity = aimData.direction.multiply(powerChargeLevel);
+    playerBall.velocity = aimData.direction.multiply(
+      powerChargeLevel * powerChargeMaxLevel
+    );
     aimData.direction = null;
   }
 
@@ -214,10 +218,10 @@ canvas.addEventListener("touchend", (e) => {
 
 const initializeAiming = (x, y) => {
   const tableLocation = screenToTableLocation(x, y);
-  aimData.direction = tableLocation.minus(playerBall.location).normalized();
+  aimData.direction = playerBall.location.minus(tableLocation).normalized();
 
   aimData.aimMouseStartAngle = aimData.direction.toAngle();
-  aimData.aimMouseStartLocation = new vector2(x, y);
+  aimData.aimStartAngle = aimData.aimMouseStartAngle;
 };
 
 const onMouseDown = (mouseX, mouseY) => {
@@ -241,8 +245,11 @@ const onMouseDown = (mouseX, mouseY) => {
     initializeAiming(mouseX, mouseY);
   }
 
-  aimData.aimMouseStartAngle = aimData.direction.toAngle();
-  aimData.aimMouseStartLocation = new vector2(mouseX, mouseY);
+  const tableLocation = screenToTableLocation(mouseX, mouseY);
+  const dir = playerBall.location.minus(tableLocation).normalized();
+
+  aimData.aimStartAngle = aimData.direction.toAngle();
+  aimData.aimMouseStartAngle = dir.toAngle();
 };
 
 canvas.addEventListener("mousedown", (e) => {
@@ -261,10 +268,11 @@ const onMouseMove = (mouseX, mouseY) => {
     const mouseLocation = new vector2(mouseX, mouseY);
 
     const mouseMovement = mouseLocation.minus(mouseDownLocation);
-
-    if (mouseMovement.magnitude() > 15) {
-      clearTimeout(onMouseHoldTimeout);
+    if (mouseMovement.magnitude() < 5) {
+      return;
     }
+
+    clearTimeout(onMouseHoldTimeout);
 
     if (!areAllBallsStopped()) {
       return;
@@ -276,22 +284,18 @@ const onMouseMove = (mouseX, mouseY) => {
 
     if (aimData.direction != null) {
       if (isHoldingMouse) {
-        powerChargeLevel =
-          Math.min(
-            1,
-            mouseLocation.distance(powerChargeMouseStartLocation) /
-              powerChargeArea
-          ) * powerChargeMaxLevel;
-      } else {
-        const mouseMovement = mouseLocation.minus(
-          aimData.aimMouseStartLocation
+        powerChargeLevel = ilerp(
+          powerChargeMinArea,
+          powerChargeArea,
+          mouseLocation.distance(powerChargeMouseStartLocation)
         );
+      } else {
+        const tableLocation = screenToTableLocation(mouseX, mouseY);
+        const direction = playerBall.location.minus(tableLocation).normalized();
+        const angle = direction.toAngle();
 
         aimData.direction = vector2.fromAngle(
-          aimData.aimMouseStartAngle -
-            (mouseMovement.x / 180) *
-              Math.PI *
-              lerp(0, 20, 1 - mouseY / window.innerHeight)
+          aimData.aimStartAngle - deltaAngle(angle, aimData.aimMouseStartAngle)
         );
       }
     }
@@ -352,29 +356,27 @@ const drawLine = (ctx, lineStart, direction, iteration) => {
       }
     }
 
-    if (!hitHole) {
-      for (const ball of balls) {
-        if (ball.location.distance(lineStart) < ballRadius / 2) {
-          continue;
-        }
-        if (ball == playerBall) {
-          continue;
-        }
+    for (const ball of balls) {
+      if (ball.location.distance(lineStart) < ballRadius / 2) {
+        continue;
+      }
+      if (ball == playerBall) {
+        continue;
+      }
 
-        if (
-          doesRayInterceptCircle(
-            lineStart,
-            lineEnd,
-            ball.location,
-            ballRadius * 2
-          )
-        ) {
-          const ballDistance = ball.location.distance(lineStart);
+      if (
+        doesRayInterceptCircle(
+          lineStart,
+          lineEnd,
+          ball.location,
+          ballRadius * 2
+        )
+      ) {
+        const ballDistance = ball.location.distance(lineStart);
 
-          if (closestBallHit == null || ballDistance < closestBallDistance) {
-            closestBallHit = ball;
-            closestBallDistance = ballDistance;
-          }
+        if (closestBallHit == null || ballDistance < closestBallDistance) {
+          closestBallHit = ball;
+          closestBallDistance = ballDistance;
         }
       }
     }
@@ -670,26 +672,24 @@ const render = () => {
     drawLine(ctx, playerBall.location, aimData.direction, 0);
 
     if (isHoldingMouse) {
-      ctx.strokeStyle = `rgba(255,0,0,${
-        powerChargeLevel > powerChargeMinLevel ? 1 : 0.75
-      })`;
+      ctx.strokeStyle = `rgba(255,0,0,${powerChargeLevel > 0 ? 1 : 0.6})`;
       ctx.beginPath();
       ctx.arc(
         powerChargeMouseStartLocation.x,
         powerChargeMouseStartLocation.y,
-        (powerChargeMinLevel / powerChargeMaxLevel) * powerChargeArea,
+        powerChargeMinArea,
         0,
         Math.PI * 2
       );
       ctx.stroke();
 
-      if (powerChargeLevel > powerChargeMinLevel) {
+      if (powerChargeLevel > 0) {
         ctx.fillStyle = `rgba(255,0,0,0.25)`;
         ctx.beginPath();
         ctx.arc(
           powerChargeMouseStartLocation.x,
           powerChargeMouseStartLocation.y,
-          (powerChargeLevel / powerChargeMaxLevel) * powerChargeArea,
+          lerp(powerChargeMinArea, powerChargeArea, powerChargeLevel),
           0,
           Math.PI * 2,
           false
@@ -697,7 +697,7 @@ const render = () => {
         ctx.arc(
           powerChargeMouseStartLocation.x,
           powerChargeMouseStartLocation.y,
-          (powerChargeMinLevel / powerChargeMaxLevel) * powerChargeArea,
+          powerChargeMinArea,
           0,
           Math.PI * 2,
           true
