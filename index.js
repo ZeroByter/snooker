@@ -35,6 +35,7 @@ const holeRadius = ballRadius * 1.5;
 
 let isMouseDown = false;
 let mouseDownLocation = null;
+let hasMouseMovedFar = false;
 
 let aimData = {
   direction: null,
@@ -231,6 +232,7 @@ const onMouseDown = (mouseX, mouseY) => {
 
   isMouseDown = true;
   mouseDownLocation = new vector2(mouseX, mouseY);
+  hasMouseMovedFar = false;
 
   onMouseHoldTimeout = setTimeout(
     () => onMouseHold(new vector2(mouseX, mouseY)),
@@ -268,9 +270,11 @@ const onMouseMove = (mouseX, mouseY) => {
     const mouseLocation = new vector2(mouseX, mouseY);
 
     const mouseMovement = mouseLocation.minus(mouseDownLocation);
-    if (mouseMovement.magnitude() < 5) {
+    if (mouseMovement.magnitude() < 5 && !hasMouseMovedFar) {
       return;
     }
+
+    hasMouseMovedFar = true;
 
     clearTimeout(onMouseHoldTimeout);
 
