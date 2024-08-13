@@ -9,7 +9,6 @@ import {
   ilerpUnclamped,
   lerp,
   rayDistanceToCircle,
-  repeat,
 } from "./math.js";
 
 const canvas = document.querySelector("canvas");
@@ -17,6 +16,12 @@ const ctx = canvas.getContext("2d");
 
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
+
+const GAME_STATE = Object.freeze({
+  PLAYING: Symbol("playing"),
+  WIN: Symbol("win"),
+  LOSE: Symbol("lose")
+})
 
 // main game loop stuff
 let lastRanTime = 0;
@@ -58,7 +63,7 @@ let powerChargeMouseStartLocation = null;
 
 let lastAllBallsStopped = true;
 
-let gameState = "playing"; // or "win" or "lose", too lazy to do proper enum sue me
+let gameState = GAME_STATE.PLAYING
 
 const backgroundColor = {
   r: 15,
@@ -220,6 +225,7 @@ const initializeAiming = (x, y) => {
 
 const onMouseDown = (mouseX, mouseY) => {
   if (!isAlive) {
+    window.location.reload()
     return null;
   }
 
@@ -231,6 +237,10 @@ const onMouseDown = (mouseX, mouseY) => {
     () => onMouseHold(new vector2(mouseX, mouseY)),
     500
   );
+
+  if (gameState != GAME_STATE.PLAYING) {
+    window.location.reload()
+  }
 
   if (!areAllBallsStopped()) {
     return;
@@ -609,12 +619,12 @@ const think = () => {
       }
 
       if (ball.isPlayer) {
-        gameState = "lose";
+        gameState = GAME_STATE.LOSE;
         isAlive = false;
         localStorage.removeItem(SAVE_GAME_KEY);
       } else {
         if (balls.length == 1 && isAlive) {
-          gameState = "win";
+          gameState = GAME_STATE.LOSE;
           localStorage.removeItem(SAVE_GAME_KEY);
         }
       }
@@ -624,9 +634,31 @@ const think = () => {
   }
 };
 
+/**
+ * @param {CanvasRenderingContext2D} ctx 
+ * @param {number} size 
+ * @param {number} outlineWidth 
+ * @param {string} color 
+ * @param {string} outlineColor 
+ * @param {string} str 
+ * @param {number} x 
+ * @param {number} y 
+ */
+const renderTextOutline = (ctx, size, outlineWidth, color, outlineColor, str, x, y) => {
+  ctx.font = `${size}px Arial`;
+  ctx.fillStyle = color;
+  ctx.fillText(str, x, y);
+
+  ctx.lineWidth = outlineWidth
+  ctx.strokeStyle = outlineColor
+  ctx.strokeText(str, x, y)
+}
+
 const render = () => {
   ctx.fillStyle = `rgb(${backgroundColor.r}, ${backgroundColor.g}, ${backgroundColor.b})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = "center"
 
   const tablePadding = 10;
   ctx.fillStyle = "#007030";
@@ -758,40 +790,18 @@ const render = () => {
     ctx.stroke();
   }
 
-  ctx.textAlign = "center";
+  if (gameState == GAME_STATE.WIN) {
+    renderTextOutline(ctx, 50, 1.5, "white", "green", "You win!", canvas.width / 2, canvas.height / 2)
 
-  if (gameState == "win") {
-    ctx.font = "52px Arial";
-    ctx.fillStyle = "black";
-    ctx.fillText("You win!", canvas.width / 2, canvas.height / 2);
+    renderTextOutline(ctx, 30, 0.75, "white", "green", "yay", canvas.width / 2, canvas.height / 2 + 30)
 
-    ctx.font = "50px Arial";
-    ctx.fillStyle = "white";
-    ctx.fillText("You win!", canvas.width / 2, canvas.height / 2);
+    renderTextOutline(ctx, 16, 0.15, "white", "black", "(click anywhere to restart)", canvas.width / 2, canvas.height / 2 + 60)
+  } else if (gameState == GAME_STATE.LOSE) {
+    renderTextOutline(ctx, 50, 1.5, "white", "red", "You lost!", canvas.width / 2, canvas.height / 2)
 
-    ctx.font = "32px Arial";
-    ctx.fillStyle = "black";
-    ctx.fillText("yay", canvas.width / 2, canvas.height / 2 + 30);
+    renderTextOutline(ctx, 30, 0.75, "white", "red", "loser", canvas.width / 2, canvas.height / 2 + 30)
 
-    ctx.font = "30px Arial";
-    ctx.fillStyle = "white";
-    ctx.fillText("yay", canvas.width / 2, canvas.height / 2 + 30);
-  } else if (gameState == "lose") {
-    ctx.font = "52px Arial";
-    ctx.fillStyle = "red";
-    ctx.fillText("You lost!", canvas.width / 2, canvas.height / 2);
-
-    ctx.font = "50px Arial";
-    ctx.fillStyle = "white";
-    ctx.fillText("You lost!", canvas.width / 2, canvas.height / 2);
-
-    ctx.font = "32px Arial";
-    ctx.fillStyle = "red";
-    ctx.fillText("loser", canvas.width / 2, canvas.height / 2 + 30);
-
-    ctx.font = "30px Arial";
-    ctx.fillStyle = "white";
-    ctx.fillText("loser", canvas.width / 2, canvas.height / 2 + 30);
+    renderTextOutline(ctx, 16, 0.15, "white", "black", "(click anywhere to restart)", canvas.width / 2, canvas.height / 2 + 60)
   }
 };
 
@@ -817,8 +827,8 @@ let createDefaultGame = () => {
     for (let x = 0; x < 6 - (y + 1); x++) {
       addBall(
         tableSize / 2 +
-          (y - 4) * ((ballRadius * 2.25) / 2) +
-          x * ballRadius * 2.25,
+        (y - 4) * ((ballRadius * 2.25) / 2) +
+        x * ballRadius * 2.25,
         tableSize * 0.33 + y * ballRadius * 2,
         false,
         balls.length < 7
@@ -846,7 +856,7 @@ if (storedBallsData) {
 
     if (playerBall == null) {
       isAlive = false;
-      gameState = "lose";
+      gameState = GAME_STATE.LOSE;
     }
   } else {
     localStorage.removeItem(SAVE_GAME_KEY);
