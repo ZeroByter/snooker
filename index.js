@@ -852,6 +852,8 @@ let createDefaultBalls = () => {
 const initializeGame = () => {
   createDefaultBalls()
 
+  clearTimeout(onMouseHoldTimeout);
+
   gameStartTime = Date.now()
 
   aimData.aimMouseStartAngle = null
