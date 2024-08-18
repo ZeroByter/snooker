@@ -63,6 +63,7 @@ let powerChargeMouseStartLocation = null;
 
 let lastAllBallsStopped = true;
 
+let gameStartTime = 0
 let gameState = GAME_STATE.PLAYING
 
 const backgroundColor = {
@@ -81,8 +82,8 @@ const ballColors = [
   "#00FF00",
   "#F7931E",
 ];
-const availableBallColors = [...ballColors];
-const availableStrippedBallColors = [...ballColors];
+let availableBallColors = [...ballColors];
+let availableStrippedBallColors = [...ballColors];
 let balls = [];
 
 window.addEventListener("resize", (e) => {
@@ -225,7 +226,11 @@ const initializeAiming = (x, y) => {
 
 const onMouseDown = (mouseX, mouseY) => {
   if (!isAlive) {
-    window.location.reload()
+    initializeGame()
+    return null;
+  }
+
+  if (Date.now() - gameStartTime < 50) {
     return null;
   }
 
@@ -239,7 +244,7 @@ const onMouseDown = (mouseX, mouseY) => {
   );
 
   if (gameState != GAME_STATE.PLAYING) {
-    window.location.reload()
+    initializeGame()
   }
 
   if (!areAllBallsStopped()) {
@@ -822,7 +827,12 @@ const mainLoop = (time) => {
   });
 };
 
-let createDefaultGame = () => {
+let createDefaultBalls = () => {
+  balls = []
+
+  availableBallColors = [...ballColors];
+  availableStrippedBallColors = [...ballColors];
+
   for (let y = 0; y < 5; y++) {
     for (let x = 0; x < 6 - (y + 1); x++) {
       addBall(
@@ -838,6 +848,22 @@ let createDefaultGame = () => {
 
   playerBall = addBall(tableSize / 2, tableSize * 2 * 0.76, true);
 };
+
+const initializeGame = () => {
+  createDefaultBalls()
+
+  gameStartTime = Date.now()
+
+  aimData.aimMouseStartAngle = null
+  aimData.aimStartAngle = null
+  aimData.direction = null
+
+  isHoldingMouse = false
+
+  isAlive = true
+  gameState = GAME_STATE.PLAYING
+}
+initializeGame()
 
 let storedBallsData = localStorage.getItem(SAVE_GAME_KEY);
 if (storedBallsData) {
@@ -861,10 +887,10 @@ if (storedBallsData) {
   } else {
     localStorage.removeItem(SAVE_GAME_KEY);
 
-    createDefaultGame();
+    initializeGame();
   }
 } else {
-  createDefaultGame();
+  initializeGame();
 }
 
 // for (let i = 0; i < 2; i++) {
